@@ -1,0 +1,204 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "TierName": {
+      "type": "string",
+      "allowedValues": [
+        "Web",
+        "App",
+        "Database"
+      ],
+      "defaultValue": "Web"
+    },
+    "Instance": {
+      "type": "int",
+      "minValue": 1,
+      "maxValue": 4,
+      "defaultValue": 1
+    },
+    "VMSize": {
+      "type": "string",
+      "defaultValue": "Standard_F2s_v2",
+      "allowedValues": [
+        "Standard_F2s_v2",
+        "Standard_B1ms",
+        "Standard_D2"
+      ]
+    },
+    "AdminUserName": {
+      "type": "string"
+    },
+    "AdminPassword": {
+      "type": "securestring"
+    },
+    "OperatingSystem": {
+      "type": "string",
+      "defaultValue": "Windows",
+      "allowedValues": [
+        "Windows",
+        "Linux"
+      ]
+    }
+  },
+  "variables": {
+    "virtualMachineName": "[concat(parameters('TierName'),'VM')]",
+    "vnetid": "[resourceId('AA-WebDemo','Microsoft.Network/virtualNetworks','AA-WebDemo-vNET')]",
+    "subnetRef": "[concat(variables('vnetId'), '/subnets/', 'default')]",
+    "VM_Images": {
+      "Windows": {
+        "publisher": "MicrosoftWindowsServer",
+        "offer": "WindowsServer",
+        "sku": "2016-Datacenter",
+        "version": "latest"
+      },
+      "Linux": {
+        "publisher": "SUSE",
+        "offer": "SLES",
+        "sku": "12-SP3",
+        "version": "latest"
+      }
+    }
+  },
+  "resources": [
+    {
+      "name": "AA-WebDemo-vNET",
+      "type": "Microsoft.Network/virtualNetworks",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [],
+      "tags": {
+        "displayName": "Virtual Network",
+        "Owner": "prabhat.thakur@softwareone.com"
+      },
+      "copy": {
+        "name": "vNET-Copy",
+        "count": 1
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "default",
+            "properties": {
+              "addressPrefix": "10.0.0.0/24"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[concat('AA-',parameters('TierName'),'-AVSet')]",
+      "type": "Microsoft.Compute/availabilitySets",
+      "sku": {
+        "name": "Aligned"
+      },
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-06-15",
+      "dependsOn": [],
+      "tags": {
+        "displayName": "Availability Set",
+        "Owner": "prabhat.thakur@softwareone.com"
+      },
+      "copy": {
+        "name": "AvSet-Copy",
+        "count": 1
+      },
+      "properties": {
+        "platformUpdateDomainCount": 2,
+        "platformFaultDomainCount": 5
+      }
+    },
+    {
+      "name": "[concat(variables('virtualMachineName'),copyIndex(),'-nic')]",
+      "type": "Microsoft.Network/networkInterfaces",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [
+        "vNET-Copy"
+      ],
+      "tags": {
+        "displayName": "Network Interface",
+        "Owner": "prabhat.thakur@softwareone.com"
+      },
+      "copy": {
+        "name": "NIC-Copy",
+        "count": "[parameters('Instance')]"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              },
+              "privateIPAllocationMethod": "Dynamic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[concat(variables('virtualMachineName'),copyIndex())]",
+      "apiVersion": "2018-06-01",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "Virtual Machine",
+        "Owner": "prabhat.thakur@softwareone.com"
+      },
+      "copy": {
+        "name": "VM-Copy",
+        "count": "[parameters('Instance')]"
+      },
+      "dependsOn": [
+        "NIC-Copy",
+        "AVSet-Copy"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('VMSize')]"
+        },
+        "osProfile": {
+          "computerName": "[concat(variables('virtualMachineName'),copyIndex())]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('VM_Images')[parameters('OperatingSystem')].publisher]",
+            "offer": "[variables('VM_Images')[parameters('OperatingSystem')].offer]",
+            "sku": "[variables('VM_Images')[parameters('OperatingSystem')].sku]",
+            "version": "[variables('VM_Images')[parameters('OperatingSystem')].version]"
+          },
+          "osDisk": {
+            "name": "[concat(variables('virtualMachineName'),copyIndex(),'-OSDisk')]",
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            }
+          },
+          "dataDisks": [
+
+          ],
+          "networkProfile": {
+            "networkInterfaces": [
+              {
+                "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('virtualMachineName'),copyIndex(),'-nic'))]"
+              }
+            ]
+          },
+          "licenseType": "[if(equals(variables('VM_IMAGES')[parameters('OperatingSystem')],'Windows'), 'Windows_Server',json('null'))]"
+        }
+      }
+     }
+  ],
+  "outputs": {
+
+  }
+}
